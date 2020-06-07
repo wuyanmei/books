@@ -1,0 +1,119 @@
+【git】创建远程仓库并利用Nginx提供http服务
+
+
+基本环境
+ubuntu18.04 debian9
+nginx
+git
+必要软件安装
+执行
+
+sudo apt-get install nginx git nano fcgiwrap apache2-utils -y
+1
+创建仓库文件夹
+
+sudo mkdir /var/www/html/git
+1
+授予文件夹Nginx的访问权限
+
+sudo chown -R www-data:www-data /var/www/html/git
+1
+配置Nginx
+sudo vim /etc/nginx/sites-available/git-server
+1
+配置内容
+
+# Default server configuration
+#
+server {
+        listen 80 default_server; #可以更改下其他端口
+        listen [::]:80 default_server;
+
+
+        root /var/www/html/git;
+
+        # Add index.php to the list if you are using PHP
+        index index.html index.htm index.nginx-debian.html;
+
+        server_name _;
+
+        location / {
+            # First attempt to serve request as file, then
+            # as directory, then fall back to displaying a 404.
+            try_files $uri $uri/ =404;
+        }
+
+        location ~ (/.*) {
+          client_max_body_size 0; # Git pushes can be massive, just to make sure nginx doesn't suddenly cut the connection add this.
+          auth_basic "Git Login"; # Whatever text will do.
+          auth_basic_user_file "/var/www/html/git/htpasswd";
+          include /etc/nginx/fastcgi_params; # Include the default fastcgi configs
+          fastcgi_param SCRIPT_FILENAME /usr/lib/git-core/git-http-backend; # Tells fastcgi to pass the request to the git http backend executable
+          fastcgi_param GIT_HTTP_EXPORT_ALL "";
+          fastcgi_param GIT_PROJECT_ROOT /var/www/html/git; # /var/www/git is the location of all of your git repositories.
+          fastcgi_param REMOTE_USER $remote_user;
+          fastcgi_param PATH_INFO $1; # Takes the capture group from our location directive and gives git that.
+          fastcgi_pass  unix:/var/run/fcgiwrap.socket; # Pass the request to fastcgi
+        }
+
+}
+ 
+注意，在这里，要是令该配置文件生效，需要对配置文件进行软连接
+
+sudo ln /etc/nginx/sites-available/git-server /etc/nginx/sites-enabled/git-server
+1
+验证配置文件是否正确
+
+sudo nginx -t
+1
+若正确会输出以下内容 
+这里写图片描述 
+创建git的用户名和密码，这里的“user”为用户名，可以自定义
+
+sudo htpasswd -c /var/www/html/git/htpasswd user
+1
+重启Nginx服务
+
+sudo systemctl restart nginx
+1
+创建git仓库
+cd /var/www/html/git
+sudo mkdir hitesh.git
+sudo cd hitesh.git
+sudo git --bare init
+sudo git update-server-info
+sudo chown -R www-data.www-data .
+sudo chmod -R 755 .
+ 
+7
+测试仓库配置是否正确
+在另外一台机器上安装git客户端
+
+sudo apt-get install git -y
+git init
+git remote add origin http://hitesh@192.168.1.100/hitesh.git
+
+# 创建测试文件
+mkdir test1 test2 test3
+echo "This is my first repository" > test1/repo1
+echo "This is my second repository" > test2/repo2
+echo "This is my third repository" > test3/repo3
+
+# 添加并提交
+git add .
+git commit -a -m "Add files and directoires"
+
+# 推送至远程仓库
+git push origin master
+ 
+16
+注意点
+在服务器端创建远程仓库时，用的是 git init –bare 命令 而不是 git init。这两者是有一定区别的，参考：https://blog.csdn.net/sinat_34349564/article/details/52487860
+
+在执行 git push 命令时，有可能会出现 branch is currently checked out 错误，这是由于git默认拒绝了push操作，需要进行设置，修改.git/config添加如下代码：
+
+[receive]
+    denyCurrentBranch = ignore
+1
+2
+原文连接地址:How to Install HTTP Gi
